@@ -33,7 +33,8 @@ int main(int argc, char* argv[]){
     key_t cle;
     char ** theme;
     pid_t pid;
-    char ordre[10], snb_themes[10];
+    char ordre[10], rtheme[10], numero[10], snb_themes[10], snb_archivistes[10];
+    int action;
 
     /*Gestion des paramètres                                 */
     if(argc != 3){
@@ -42,6 +43,7 @@ int main(int argc, char* argv[]){
     nb_archivistes = atoi(argv[1]);
     nb_themes = atoi(argv[2]);
     sprintf(snb_themes,"%d",nb_themes); /*On transforme nb_themes en char* pour le passer en paramètre*/
+    sprintf(snb_archivistes,"%d",nb_archivistes); /*Idem mais pour les archivistes*/
 
     /* Creation de la cle :                                  */
     /* 1 - On teste si le fichier cle existe dans le repertoire courant : */
@@ -73,13 +75,6 @@ int main(int argc, char* argv[]){
     }
 
     /* On cree le semaphore :                               */
-    /*------------------------------------------------------*
-     *                                                      *
-     *                 A COMPLETER !!!                      *
-     *                                                      *
-     *------------------------------------------------------*/
-
-    /* On l'initialise :                                    */
     /*------------------------------------------------------*
      *                                                      *
      *                 A COMPLETER !!!                      *
@@ -118,6 +113,26 @@ int main(int argc, char* argv[]){
 
     /* On lance indéfiniment des journalistes :             */
     while(0<1){
+        sleep(1);
+        action = rand() % 10;
+        pid = fork();
+        if (pid==-1)
+            break;
+        if (pid==0){
+            /*On cree les parametres des journalistes*/
+            sprintf(rtheme,"%d",rand()%nb_themes);
+            sprintf(numero,"%d",rand()%(TAILLE_MAX_SMP + 5));
+            
+            if(action < 7){/*7/10 font des demandes de consultation*/
+                execl("journaliste","journaliste",snb_archivistes,"C",rtheme, numero,NULL);
+            }else if(action < 9){/*2/10 font des demandes de publication d'articles*/
+                execl("journaliste","journaliste",snb_archivistes,"P",rtheme,"abcd",NULL);
+            }else{/*les autres (1/10) font des demandes d'effacement d'article*/
+                execl("journaliste","journaliste",snb_archivistes,"E",rtheme, numero,NULL);
+            }
+            /* en principe jamais atteint */
+            exit(-1);
+	    }
     }
 
     terminaison(0);

@@ -1,6 +1,6 @@
-#include <unistd.h>
+#include "types.h"
 
-int main(){
-    fprintf(stderr,"archiviste %d lancé \n", getpid());
-    pause();
+int main(int argc, char* argv[]){
+    fprintf(stderr,"journaliste %d lancé avec pour action %s\n", getpid(), argv[2]);
+    exit(0);
 }
