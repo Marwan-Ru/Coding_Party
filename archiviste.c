@@ -1,5 +1,6 @@
-#include <unistd.h>
+#include "types.h"
 
 int main(){
-    pause();
+    fprintf(stderr,"archiviste %d lancé \n", getpid());
+    exit(0);
 }
