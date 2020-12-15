@@ -7,7 +7,7 @@
 int  nb_archivistes, smptheme, smptaille, file_msg, semap, smpalgo;
 int * taille;
 int * algo;
-char ** theme;
+char *** theme;
 pid_t l_archiviste[MAX_ARCHIVISTE];
 
 void usage(char* s){
@@ -77,13 +77,13 @@ int main(int argc, char* argv[]){
 
     /* On cree les SMP et on teste si ils existe deja :        */
     /*Contient les themes*/
-    smptheme = shmget(cle1,sizeof(char*) * TAILLE_MAX_SMP,IPC_CREAT | IPC_EXCL | 0660);
+    smptheme = shmget(cle1,sizeof(char**) * nb_themes,IPC_CREAT | IPC_EXCL | 0660);
     if (smptheme == -1){
 	    printf("Pb creation SMP ou il existe deja\n");
 	    exit(-1);
     }
     /*Contient la taille des themes*/
-    smptaille = shmget(cle2,sizeof(int),IPC_CREAT | IPC_EXCL | 0660);
+    smptaille = shmget(cle2,sizeof(int)*nb_themes,IPC_CREAT | IPC_EXCL | 0660);
     if (smptaille == -1){
 	    printf("Pb creation SMP ou il existe deja\n");
         /*On detruit les ipc déjà présents*/
@@ -91,7 +91,7 @@ int main(int argc, char* argv[]){
 	    exit(-1);
     }
     /*contient le nombre de lecteurs et d'ecrivains*/
-    smpalgo = shmget(cle3,sizeof(int)*2,IPC_CREAT | IPC_EXCL | 0660);
+    smpalgo = shmget(cle3,sizeof(int)*2*nb_themes,IPC_CREAT | IPC_EXCL | 0660);
     if (smpalgo == -1){
 	    printf("Pb creation SMP ou il existe deja\n");
         /*On detruit les ipc déjà présents*/
@@ -136,14 +136,17 @@ int main(int argc, char* argv[]){
 
 
     /*On initialise la taille*/
-    taille[0] = 0;
+    for(i=0;i<nb_themes;i++){
+        taille[i] = 0
+    }
 
     /*On initialise algo*/
-    algo[0] = 0;
-    algo[1] = 0;
+    for(i=0;i<nb_themes*2;i++){
+        algo[i]=0;
+    }
 
     /* On cree le semaphore :                               */
-    semap = semget(cle1,5,IPC_CREAT | IPC_EXCL | 0660);
+    semap = semget(cle1,5*nb_themes,IPC_CREAT | IPC_EXCL | 0660);
     if (semap==-1){
 	    printf("Pb creation semaphore ou il existe deja\n");
 	    /* Il faut detruire les SMP */
@@ -156,19 +159,19 @@ int main(int argc, char* argv[]){
 	    exit(-1);
     }
 
-    ushort tab[] = {1,1,1,1,1};
-
-    res_init = semctl(semap,0,SETALL,tab);
-    if (res_init==-1){
-        printf("Pb d'init du semaphore\n");
-	    /* Il faut detruire les SMP */
-        shmdt(theme);
-        shmdt(taille);
-        shmdt(algo);
-	    shmctl(smptheme,IPC_RMID,NULL);
-        shmctl(smptaille,IPC_RMID,NULL);  
-        shmctl(smpalgo,IPC_RMID,NULL);   
-	    exit(-1);
+    for(i=0;i<5*nb_themes;i++){
+        res_init = semctl(semap,i,SETVAL,1);
+        if (res_init==-1){
+            printf("Pb d'init du semaphore\n");
+            /* Il faut detruire les SMP */
+            shmdt(theme);
+            shmdt(taille);
+            shmdt(algo);
+            shmctl(smptheme,IPC_RMID,NULL);
+            shmctl(smptaille,IPC_RMID,NULL);  
+            shmctl(smpalgo,IPC_RMID,NULL);   
+            exit(-1);
+        }
     }
 
     /* Creation file de message :                           */
