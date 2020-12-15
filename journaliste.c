@@ -68,7 +68,9 @@ int main(int argc, char* argv[]){
     if(reponse.erreur == -1){
         fprintf(stderr,"Le journaliste (%d) termine en recevant une erreur\n", getpid());
     }else{
-        fprintf(stderr,"Le journaliste (%d) termine en recevant une bonne réponse\n", getpid());
+        printf("Le journaliste (%d) termine en recevant correctement", getpid());
+        if(action == 'C') printf(" contenu = %s", reponse.contenu);
+        printf("\n");
     }
     exit(0);
 }

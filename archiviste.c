@@ -13,13 +13,13 @@ void terminaison(int s){
     exit(0);
 }
 
-int P(int sem){ /*Permet de réserver le theme numero sem*/
+int P(int sem){ 
     struct sembuf op={sem, -1, SEM_UNDO};
 
     return semop(semap,&op,1);
 }
 
-int V(int sem){ /*Permet de liberer le theme numero sem*/
+int V(int sem){ 
     struct sembuf op={sem, 1, SEM_UNDO};
 
     return semop(semap,&op,1);
@@ -155,7 +155,7 @@ int main(int argc, char * argv[]){
                         
                         /*lire*/
                         reponse.erreur = 0;
-                        /*strcpy(reponse.contenu, theme[requete.numero]); Provoque un bloquage de facons apparement aléatoire*/
+                        strcpy(reponse.contenu, theme[requete.numero]);
                         /*finlire*/
                         
                         P(mutex_nb_lecteurs);  
@@ -204,7 +204,10 @@ int main(int argc, char * argv[]){
                         P(ecriture);
                         /*effacement*/
                         theme[requete.numero] = NULL;
-                        memcpy(theme[requete.numero], theme[requete.numero + 1], sizeof(char*)*4*(taille[0] - requete.numero - 1)); /*On decale a droite les articles rangés a droite de l'article supprimé */
+                        /*On decale le tableau*/
+                        for(int i=requete.numero;i<taille[0]-1;i++){
+                            theme[i] = theme[i+1];
+                        }
                         taille[0]--;
                         reponse.erreur = 0;
                         /*fineffacement*/
