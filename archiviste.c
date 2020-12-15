@@ -1,6 +1,8 @@
 #include "types.h"
 
+int semap;    /* ID du semaphore    */
 int * taille;
+int * algo; /*nombre de lecteurs et d'ecrivains*/
 char ** theme;
 
 void terminaison(int s){
@@ -10,10 +12,23 @@ void terminaison(int s){
     exit(0);
 }
 
+int P(int sem){ /*Permet de réserver le theme numero sem*/
+    struct sembuf op={sem, -1, SEM_UNDO};
+
+    return semop(semap,&op,1);
+}
+
+int V(int sem){ /*Permet de liberer le theme numero sem*/
+    struct sembuf op={sem, 1, SEM_UNDO};
+
+    return semop(semap,&op,1);
+}
+
+
 int main(int argc, char * argv[]){
     struct stat st;
     key_t cle1, cle2;
-    int smptheme, smptaille, file_msg, ret_envoi;
+    int smptheme, smptaille, smpalgo, file_msg, ret_envoi;
     size_t taille_requete;
     requete_t requete;
     reponse_t reponse;
@@ -72,12 +87,12 @@ int main(int argc, char * argv[]){
         exit(-1);
     }
 
-    /* On recupere le semaphore :                           */
-    /*------------------------------------------------------*
-     *                                                      *
-     *                 A COMPLETER !!!                      *
-     *                                                      *
-     *------------------------------------------------------*/
+    /* On recupere l'ensemble de semaphore :                */
+    semap = semget(cle1,0,0);
+    if (semap==-1){
+	    printf("(%d) Pb recuperation semaphore\n",getpid());
+	    exit(-1);
+    }
 
     /* Creation file de message :                           */
     file_msg = msgget(cle1, 0);
@@ -105,8 +120,7 @@ int main(int argc, char * argv[]){
 
         /*Traitement de la requete*/
         switch(requete.nature){
-            case 'C': /*Consultation*/
-                fprintf(stderr,"Ctaille = %d\n", taille[0]);
+            case 'C': /*Consultation donc c'est un lecteur*/
                 if(requete.numero < TAILLE_MAX_SMP && requete.numero < taille[0]){ /*On verifie que le numero demandé est bien inferieur au nombre d'articles max*/
                     if(theme[requete.numero] != NULL){ /*On verifie que l'article existe bien*/
                         reponse.erreur = 0;
@@ -114,25 +128,22 @@ int main(int argc, char * argv[]){
                     }
                 }
                 break;
-            case 'P': /*Publication*/
+            case 'P': /*Publication ecrivain*/
                 if(requete.numero < TAILLE_MAX_SMP){
                     if(requete.contenu != NULL){ /*On verifie que la requete contient bien le contenu*/
                         theme[taille[0]] = (char*) malloc(sizeof(char) * 4);
                         strncpy(theme[taille[0]],requete.contenu,4); /*On utilise strncpy pour eviter les segmentation fault*/
-                        fprintf(stderr,"Ptaille = %d\n", taille[0]);
                         taille[0] = taille[0] + 1;
-                        fprintf(stderr,"Ptaille = %d\n", taille[0]);
                         reponse.erreur = 0;
                     }
                 }
                 break;
-            case 'E': /*Effacement*/
+            case 'E': /*Effacement ecrivain*/
                 if(requete.numero < TAILLE_MAX_SMP && requete.numero < taille[0]){ /*On verifie que le numero demandé est bien inferieur au nombre d'articles max*/
                     if(theme[requete.numero] != NULL){ /*On verifie que l'article existe bien*/
                         theme[requete.numero] = NULL;
                         memcpy(theme[requete.numero], theme[requete.numero + 1], sizeof(char*)*4*(taille[0] - requete.numero - 1)); /*On decale a droite les articles rangés a droite de l'article supprimé */
                         taille[0]--;
-                        fprintf(stderr,"Etaille = %d\n", taille[0]);
                         reponse.erreur = 0;
                     }
                 }

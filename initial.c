@@ -4,8 +4,9 @@
  */
 #include "types.h"
 
-int  nb_archivistes, smptheme, smptaille, file_msg;
-int *taille;
+int  nb_archivistes, smptheme, smptaille, file_msg, semap, smpalgo;
+int * taille;
+int * algo;
 char ** theme;
 pid_t l_archiviste[MAX_ARCHIVISTE];
 
@@ -25,7 +26,7 @@ void terminaison(int s){
     shmdt(theme);
     shmctl(smptheme,IPC_RMID,NULL);
     shmctl(smptaille,IPC_RMID,NULL);
-    /*COMPLETER AVEC LENSMEBLE DE SEMAPHORE*/
+    semctl(semap,0,IPC_RMID,NULL);
     msgctl(file_msg,IPC_RMID,NULL);
 	exit(-1);
 }
@@ -33,10 +34,10 @@ void terminaison(int s){
 int main(int argc, char* argv[]){
     int nb_themes, i;
     struct stat st;
-    key_t cle1, cle2;
+    key_t cle1, cle2, cle3;
     pid_t pid;
     char ordre[10], rtheme[10], numero[10], snb_themes[10], snb_archivistes[10];
-    int action;
+    int action, res_init;
 
     /*Gestion des paramètres                                 */
     if(argc != 3){
@@ -66,18 +67,34 @@ int main(int argc, char* argv[]){
 	    printf("Pb creation cle\n");
 	    exit(-1);
     }
+    cle3 = ftok(FICHIER_CLE,'c');
+    if (cle3==-1){
+	    printf("Pb creation cle\n");
+	    exit(-1);
+    }
 
     /* On cree les SMP et on teste si ils existe deja :        */
+    /*Contient les themes*/
     smptheme = shmget(cle1,sizeof(char*) * TAILLE_MAX_SMP,IPC_CREAT | IPC_EXCL | 0660);
     if (smptheme == -1){
 	    printf("Pb creation SMP ou il existe deja\n");
 	    exit(-1);
     }
+    /*Contient la taille des themes*/
     smptaille = shmget(cle2,sizeof(int),IPC_CREAT | IPC_EXCL | 0660);
     if (smptaille == -1){
 	    printf("Pb creation SMP ou il existe deja\n");
         /*On detruit les ipc déjà présents*/
         shmctl(smptheme,IPC_RMID,NULL);
+	    exit(-1);
+    }
+    /*contient le nombre de lecteurs et d'ecrivains*/
+    smpalgo = shmget(cle3,sizeof(int)*2,IPC_CREAT | IPC_EXCL | 0660);
+    if (smpalgo == -1){
+	    printf("Pb creation SMP ou il existe deja\n");
+        /*On detruit les ipc déjà présents*/
+        shmctl(smptheme,IPC_RMID,NULL);
+        shmctl(smptaille,IPC_RMID,NULL);
 	    exit(-1);
     }
 
@@ -88,6 +105,7 @@ int main(int argc, char* argv[]){
 	    /* Il faut detruire les SMP */
 	    shmctl(smptheme,IPC_RMID,NULL);
         shmctl(smptaille,IPC_RMID,NULL);
+        exit(-1);
     }
 
     taille = shmat(smptaille, NULL, 0);
@@ -97,16 +115,51 @@ int main(int argc, char* argv[]){
         shmdt(theme);
 	    shmctl(smptheme,IPC_RMID,NULL);
         shmctl(smptaille,IPC_RMID,NULL);
+        exit(-1);
     }
+
+    algo = shmat(smpalgo, NULL, 0);
+    if(algo == (void *)-1){
+        printf("Pb attachement\n");
+	    /* Il faut detruire les SMP */
+        shmdt(theme);
+        shmdt(taille);
+	    shmctl(smptheme,IPC_RMID,NULL);
+        shmctl(smptaille,IPC_RMID,NULL);
+        exit(-1);
+    }
+
 
     /*On initialise la taille*/
     taille[0] = 0;
+
+    /*On initialise algo*/
+    algo[0] = 0;
+    algo[1] = 0;
+
     /* On cree le semaphore :                               */
-    /*------------------------------------------------------*
-     *                                                      *
-     *                 A COMPLETER !!!                      *
-     *                                                      *
-     *------------------------------------------------------*/
+    semap = semget(cle1,5,IPC_CREAT | IPC_EXCL | 0660);
+    if (semap==-1){
+	    printf("Pb creation semaphore ou il existe deja\n");
+	    /* Il faut detruire les SMP */
+        shmdt(theme);
+	    shmctl(smptheme,IPC_RMID,NULL);
+        shmctl(smptaille,IPC_RMID,NULL);    
+	    exit(-1);
+    }
+
+    ushort tab[] = {0,0,0,0,0};
+
+    res_init = semctl(semap,0,SETALL,tab);
+    if (res_init==-1){
+        printf("Pb d'init du semaphore\n");
+	    /* Il faut detruire les SMP */
+        shmdt(theme);
+	    shmctl(smptheme,IPC_RMID,NULL);
+        shmctl(smptaille,IPC_RMID,NULL);
+        semctl(semap,0,IPC_RMID,NULL);    
+	    exit(-1);
+    }
 
     /* Creation file de message :                           */
     file_msg = msgget(cle1, IPC_CREAT | IPC_EXCL | 0660);
@@ -117,7 +170,7 @@ int main(int argc, char* argv[]){
         shmdt(theme);
         shmctl(smptheme,IPC_RMID,NULL);
         shmctl(smptaille,IPC_RMID,NULL);
-        /*COMPLETER AVEC LENSEMBLE DE SEMAPHORE*/
+        semctl(semap,0,IPC_RMID,NULL);
         msgctl(file_msg,IPC_RMID,NULL);
 	    exit(-1);
     }
@@ -143,6 +196,7 @@ int main(int argc, char* argv[]){
     }
 
     /* On lance indéfiniment des journalistes :             */
+    srand(time(NULL));
     while(0<1){
         sleep((rand() % 2) +1);
         action = rand() % 10;
