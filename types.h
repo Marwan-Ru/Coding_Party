@@ -18,7 +18,7 @@ typedef struct
 {
     long mtype;
     pid_t expediteur;
-    int nature; /*C : Consultation, P : Publication, E : Effacement*/
+    char nature; /*C : Consultation, P : Publication, E : Effacement*/
     int theme; /*De 1 a nb_theme */
     int numero; /*Numero de l'article concerné (-1 si inutilisé)*/
     char contenu[4]; /*Contenu de l'article lors de la creation (NULL dans les autre cas)*/

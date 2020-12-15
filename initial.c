@@ -10,7 +10,7 @@ char ** theme;
 pid_t l_archiviste[MAX_ARCHIVISTE];
 
 void usage(char* s){
-    printf("usage : %s <nb_archiviste> <nb_themes>", s);
+    printf("usage : %s <nb_archiviste> <nb_themes>\n", s);
     exit(-1);
 }
 
@@ -69,12 +69,12 @@ int main(int argc, char* argv[]){
 
     /* On cree les SMP et on teste si ils existe deja :        */
     smptheme = shmget(cle1,sizeof(char*) * TAILLE_MAX_SMP,IPC_CREAT | IPC_EXCL | 0660);
-    if (smptheme==-1){
+    if (smptheme == -1){
 	    printf("Pb creation SMP ou il existe deja\n");
 	    exit(-1);
     }
     smptaille = shmget(cle2,sizeof(int),IPC_CREAT | IPC_EXCL | 0660);
-    if (smptaille==-1){
+    if (smptaille == -1){
 	    printf("Pb creation SMP ou il existe deja\n");
         /*On detruit les ipc déjà présents*/
         shmctl(smptheme,IPC_RMID,NULL);
@@ -100,7 +100,7 @@ int main(int argc, char* argv[]){
     }
 
     /*On initialise la taille*/
-    taille = 0;
+    taille[0] = 0;
     /* On cree le semaphore :                               */
     /*------------------------------------------------------*
      *                                                      *
@@ -152,7 +152,7 @@ int main(int argc, char* argv[]){
         if (pid==0){
             /*On cree les parametres des journalistes*/
             sprintf(rtheme,"%d",rand()%nb_themes);
-            sprintf(numero,"%d",rand()%(TAILLE_MAX_SMP + 5));
+            sprintf(numero,"%d",rand()%2);
             
             if(action < 7){/*7/10 font des demandes de consultation*/
                 execl("journaliste","journaliste",snb_archivistes,"C",rtheme, numero,NULL);

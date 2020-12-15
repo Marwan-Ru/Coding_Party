@@ -67,6 +67,7 @@ int main(int argc, char * argv[]){
     }
     taille = shmat(smptaille, NULL, 0);
     if(taille == (void *)-1){
+        shmdt(theme);
         printf("Pb attachement du SMP dans l'archiviste (%d)\n", getpid());
         exit(-1);
     }
@@ -87,9 +88,9 @@ int main(int argc, char * argv[]){
 
     mon_sigaction(SIGUSR1, terminaison);
 
-    /* Boucle de traitement des requetes*/
+    /* Boucle de traitement des requetes */
     while(0<1){
-        /* serveur attend des requetes                     */
+        /* Qrchiviste attend des requetes */
         taille_requete = msgrcv(file_msg, &requete, sizeof(requete_t) - sizeof(long), 1, 0);
         if(taille_requete == -1){
             fprintf(stderr, "Erreur de reception de la requete \n");
@@ -99,9 +100,13 @@ int main(int argc, char * argv[]){
         reponse.mtype = requete.expediteur;
         reponse.erreur = -1;
 
+        /*On simule un temps de travail*/
+        sleep(rand() % 3);
+
         /*Traitement de la requete*/
         switch(requete.nature){
             case 'C': /*Consultation*/
+                fprintf(stderr,"Ctaille = %d\n", taille[0]);
                 if(requete.numero < TAILLE_MAX_SMP && requete.numero < taille[0]){ /*On verifie que le numero demandé est bien inferieur au nombre d'articles max*/
                     if(theme[requete.numero] != NULL){ /*On verifie que l'article existe bien*/
                         reponse.erreur = 0;
@@ -114,7 +119,9 @@ int main(int argc, char * argv[]){
                     if(requete.contenu != NULL){ /*On verifie que la requete contient bien le contenu*/
                         theme[taille[0]] = (char*) malloc(sizeof(char) * 4);
                         strncpy(theme[taille[0]],requete.contenu,4); /*On utilise strncpy pour eviter les segmentation fault*/
-                        taille[0]++;
+                        fprintf(stderr,"Ptaille = %d\n", taille[0]);
+                        taille[0] = taille[0] + 1;
+                        fprintf(stderr,"Ptaille = %d\n", taille[0]);
                         reponse.erreur = 0;
                     }
                 }
@@ -125,6 +132,8 @@ int main(int argc, char * argv[]){
                         theme[requete.numero] = NULL;
                         memcpy(theme[requete.numero], theme[requete.numero + 1], sizeof(char*)*4*(taille[0] - requete.numero - 1)); /*On decale a droite les articles rangés a droite de l'article supprimé */
                         taille[0]--;
+                        fprintf(stderr,"Etaille = %d\n", taille[0]);
+                        reponse.erreur = 0;
                     }
                 }
                 break;
@@ -132,9 +141,6 @@ int main(int argc, char * argv[]){
                 fprintf(stderr,"Nature de la requete recue incorrecte (%d)", getpid());
                 break;
         }
-
-        /*On simule un temps de travail*/
-        sleep(rand() % 3);
 
         ret_envoi = msgsnd(file_msg, &reponse, sizeof(reponse_t) - sizeof(long), 0);
         if(ret_envoi == -1){
