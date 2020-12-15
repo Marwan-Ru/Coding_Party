@@ -3,12 +3,13 @@
 int semap;    /* ID du semaphore    */
 int * taille;
 int * algo; /*nombre de lecteurs et d'ecrivains*/
-char ** theme;
+id_t * themes;
+char ** theme_courant;
 
 void terminaison(int s){
     /*On detache les shm*/
     shmdt(taille);
-    shmdt(theme);
+    shmdt(themes);
     shmdt(algo);
     exit(0);
 }
@@ -28,20 +29,19 @@ int V(int sem){
 
 int main(int argc, char * argv[]){
     struct stat st;
-    key_t cle1, cle2, cle3;
-    int smptheme, smptaille, smpalgo, file_msg, ret_envoi;
+    key_t cles[3];
+    int smpthemes, smptaille, smpalgo, file_msg, ret_envoi;
     size_t taille_requete;
     requete_t requete;
     reponse_t reponse;
-    int mutex_nb_ecrivains = 0, ecriture = 1, avant = 2, lecture = 3, mutex_nb_lecteurs = 4;
+    int mutex_nb_ecrivains , ecriture , avant , lecture , mutex_nb_lecteurs;
+    int nb_lecteurs, nb_ecrivains;
+    int nb_themes;
+    int i;
     
 
     /*On recupère les paramètres                            */
-    /*------------------------------------------------------*
-     *                                                      *
-     *                 A COMPLETER !!!                      *
-     *                                                      *
-     *------------------------------------------------------*/
+    nb_themes = atoi(argv[2]);
 
     fprintf(stderr,"archiviste %d lancé \n", getpid());
     /* Creation de la cle :                                 */
@@ -52,69 +52,60 @@ int main(int argc, char * argv[]){
 	    exit(-1);
     }
 
-    cle1 = ftok(FICHIER_CLE,'a');
-    if (cle1==-1){
-	    printf("Pb creation cle1\n");
-	    exit(-1);
-    }
-
-    cle2 = ftok(FICHIER_CLE,'b');
-    if (cle2==-1){
-	    printf("Pb creation cle2\n");
-	    exit(-1);
-    }
-    cle3 = ftok(FICHIER_CLE,'c');
-    if (cle3==-1){
-	    printf("Pb creation cle\n");
-	    exit(-1);
+    for(i=0;i<nb_themes+3;i++){
+        cles[i] = ftok(FICHIER_CLE,i);
+        if (cles[i] == -1){
+	        printf("Pb creation cle\n");
+	        exit(-1);
+        }
     }
 
     /* On recupere les smp :        */
-    smptheme = shmget(cle1,sizeof(char*) * TAILLE_MAX_SMP,0);
-    if (smptheme==-1){
+    smpthemes = shmget(cles[0],sizeof(id_t) * nb_themes,0);
+    if (smpthemes==-1){
 	    printf("probleme de recuperation du SMPTHEME dans l'archiviste (%d)\n", getpid());
 	    exit(-1);
     }
-    smptaille = shmget(cle2,sizeof(int),0);
+    smptaille = shmget(cles[1],sizeof(int) * nb_themes,0);
     if (smptaille==-1){
 	    printf("probleme de recuperation du SMPTAILLE dans l'archiviste (%d)\n", getpid());
 	    exit(-1);;
     }
-    smpalgo = shmget(cle3,sizeof(int)*2,0);
+    smpalgo = shmget(cles[2],sizeof(int)*2*nb_themes,0);
     if (smpalgo==-1){
 	    printf("probleme de recuperation du SMPALGO dans l'archiviste (%d)\n", getpid());
 	    exit(-1);;
     }
 
     /* Attachement de la memoire partagee :                 */
-    theme = shmat(smptheme, NULL, 0);
-    if(theme == (void *)-1){
+    themes = shmat(smpthemes, NULL, 0);
+    if(themes == (void *)-1){
         printf("Pb attachement du SMP dans l'archiviste (%d)\n", getpid());
         exit(-1);
     }
     taille = shmat(smptaille, NULL, 0);
     if(taille == (void *)-1){
-        shmdt(theme);
+        shmdt(themes);
         printf("Pb attachement du SMP dans l'archiviste (%d)\n", getpid());
         exit(-1);
     }
     algo = shmat(smpalgo, NULL, 0);
     if(algo == (void *)-1){
-        shmdt(theme);
+        shmdt(themes);
         shmdt(taille);
         printf("Pb attachement du SMP dans l'archiviste (%d)\n", getpid());
         exit(-1);
     }
 
     /* On recupere l'ensemble de semaphore :                */
-    semap = semget(cle1,0,0);
+    semap = semget(cles[0],0,0);
     if (semap==-1){
 	    printf("(%d) Pb recuperation semaphore\n",getpid());
 	    exit(-1);
     }
 
     /* Creation file de message :                           */
-    file_msg = msgget(cle1, 0);
+    file_msg = msgget(cles[0], 0);
     if (file_msg==-1){
 	    printf("Pb de recuperation de la file de message dans l'archiviste (%d)\n", getpid());
 	    exit(-1);
@@ -124,7 +115,7 @@ int main(int argc, char * argv[]){
 
     /* Boucle de traitement des requetes */
     while(0<1){
-        /* Qrchiviste attend des requetes */
+        /* Archiviste attend des requetes */
         taille_requete = msgrcv(file_msg, &requete, sizeof(requete_t) - sizeof(long), 1, 0);
         if(taille_requete == -1){
             fprintf(stderr, "Erreur de reception de la requete \n");
@@ -136,33 +127,50 @@ int main(int argc, char * argv[]){
 
         /*On simule un temps de travail*/
         sleep(rand() % 3);
+        
+        /*On gère les variables qui dépendent de la position du thème*/
+        mutex_nb_ecrivains = requete.theme *5; /*Car chaque theme a 5 semaphores*/
+        ecriture = mutex_nb_ecrivains + 1;
+        avant = mutex_nb_ecrivains + 2;
+        lecture = mutex_nb_ecrivains + 3;
+        mutex_nb_lecteurs = mutex_nb_ecrivains + 4;
+        nb_ecrivains = requete.theme * 2; /*Car pour chaque theme on dois avoir nb_ecrivains et nb_lecteurs*/
+        nb_lecteurs = nb_ecrivains + 1;
+        
+        /*On attache le smp du theme*/
+        theme_courant = shmat(themes[requete.theme],NULL,0);
+        if(theme_courant == (void *)-1){
+            shmdt(themes);
+            shmdt(taille);
+            shmdt(algo);
+            fprintf(stderr,"Pb attachement du SMP dans l'archiviste (%d)\n", getpid());
+            exit(-1);
+        }
 
         /*Traitement de la requete*/
         switch(requete.nature){
 
             case 'C': /*Consultation donc c'est un lecteur*/
-                if(requete.numero < TAILLE_MAX_SMP && requete.numero < taille[0]){ /*On verifie que le numero demandé est bien inferieur au nombre d'articles max*/
-                    if(theme[requete.numero] != NULL){ /*On verifie que l'article existe bien*/
+                if(requete.numero < TAILLE_MAX_SMP && requete.numero < taille[requete.theme]){ /*On verifie que le numero demandé est bien inferieur au nombre d'articles max*/
                         
                         P(avant);
                             P(lecture);
                                 P(mutex_nb_lecteurs); 
-                                    algo[1]++;
-                                    if(algo[1] == 1) P(ecriture);
+                                    algo[nb_lecteurs]++;
+                                    if(algo[nb_lecteurs] == 1) P(ecriture);
                                 V(mutex_nb_lecteurs);
                             V(lecture);
                         V(avant);
                         
                         /*lire*/
                         reponse.erreur = 0;
-                        strcpy(reponse.contenu, theme[requete.numero]);
+                        strcpy(reponse.contenu, theme_courant[requete.numero]);
                         /*finlire*/
                         
                         P(mutex_nb_lecteurs);  
-                            algo[1]--;
-                            if(algo[1]==0) V(ecriture);
+                            algo[nb_lecteurs]--;
+                            if(algo[nb_lecteurs]==0) V(ecriture);
                         V(mutex_nb_lecteurs);
-                    }
                 }
                 break;
 
@@ -171,51 +179,51 @@ int main(int argc, char * argv[]){
                     if(requete.contenu != NULL){ /*On verifie que la requete contient bien le contenu*/
                         
                         P(mutex_nb_ecrivains);
-                            algo[0]++;
-                            if(algo[0] == 1) P(lecture);
+                            algo[nb_ecrivains]++;
+                            if(algo[nb_ecrivains] == 1) P(lecture);
                         V(mutex_nb_ecrivains);
                         
-                        P(ecriture);
+                        P(ecriture); 
                         /*ecrire*/
-                        theme[taille[0]] = (char*) malloc(sizeof(char) * 5);
-                        strcpy(theme[taille[0]],requete.contenu);
-                        taille[0] = taille[0] + 1;
+                        theme_courant[taille[requete.theme]] = (char*) malloc(sizeof(char) * 5);
+                        strcpy(theme_courant[taille[requete.theme]],requete.contenu);
+                        taille[requete.theme] = taille[requete.theme] + 1;
                         reponse.erreur = 0;
                         /*finecrire*/
                         V(ecriture);
                         
                         P(mutex_nb_ecrivains);
-                            algo[0]--;
-                            if(algo[0] == 0) V(lecture);
+                            algo[nb_ecrivains]--;
+                            if(algo[nb_ecrivains] == 0) V(lecture);
                         V(mutex_nb_ecrivains);
                     }
                 }
                 break;
 
             case 'E': /*Effacement ecrivain*/
-                if(requete.numero < TAILLE_MAX_SMP && requete.numero < taille[0]){ /*On verifie que le numero demandé est bien inferieur au nombre d'articles max*/
-                    if(theme[requete.numero] != NULL){ /*On verifie que l'article existe bien*/
+                if(requete.numero < TAILLE_MAX_SMP && requete.numero < taille[requete.theme]){ /*On verifie que le numero demandé est bien inferieur au nombre d'articles max*/
+                    if(theme_courant[requete.numero] != NULL){ /*On verifie que l'article existe bien*/
                         
                         P(mutex_nb_ecrivains);
-                            algo[0]++;
-                            if(algo[0] == 1) P(lecture);
+                            algo[nb_ecrivains]++;
+                            if(algo[nb_ecrivains] == 1) P(lecture);
                         V(mutex_nb_ecrivains);
                         
                         P(ecriture);
                         /*effacement*/
-                        theme[requete.numero] = NULL;
+                        theme_courant[requete.numero] = NULL;
                         /*On decale le tableau*/
-                        for(int i=requete.numero;i<taille[0]-1;i++){
-                            theme[i] = theme[i+1];
+                        for(int i=requete.numero;i<taille[requete.theme]-1;i++){
+                            theme_courant[i] = theme_courant[i+1];
                         }
-                        taille[0]--;
+                        taille[requete.theme]--;
                         reponse.erreur = 0;
                         /*fineffacement*/
                         V(ecriture);
                         
                         P(mutex_nb_ecrivains);
-                            algo[0]--;
-                            if(algo[0] == 0) V(lecture);
+                            algo[nb_ecrivains]--;
+                            if(algo[nb_ecrivains] == 0) V(lecture);
                         V(mutex_nb_ecrivains);
                     }
                 }

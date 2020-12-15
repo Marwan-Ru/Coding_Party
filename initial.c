@@ -4,10 +4,10 @@
  */
 #include "types.h"
 
-int  nb_archivistes, smptheme, smptaille, file_msg, semap, smpalgo;
+int  nb_archivistes, nb_themes,smpthemes, smptaille, file_msg, semap, smpalgo;
 int * taille;
 int * algo;
-char *** theme;
+pid_t * themes;
 pid_t l_archiviste[MAX_ARCHIVISTE];
 
 void usage(char* s){
@@ -21,11 +21,14 @@ void terminaison(int s){
     for(i=0;i<nb_archivistes;i++){
         kill(l_archiviste[i], SIGUSR1);
     }
+    for(i=0;i<nb_themes;i++){
+        shmctl(themes[i],IPC_RMID,NULL);
+    }
     /*On detruit les ipc*/
     shmdt(taille);
-    shmdt(theme);
+    shmdt(themes);
     shmdt(algo);
-    shmctl(smptheme,IPC_RMID,NULL);
+    shmctl(smpthemes,IPC_RMID,NULL);
     shmctl(smptaille,IPC_RMID,NULL);
     shmctl(smpalgo,IPC_RMID,NULL);
     semctl(semap,0,IPC_RMID,NULL);
@@ -34,9 +37,9 @@ void terminaison(int s){
 }
 
 int main(int argc, char* argv[]){
-    int nb_themes, i;
+    int i;
     struct stat st;
-    key_t cle1, cle2, cle3;
+    key_t * cles;
     pid_t pid;
     char ordre[10], rtheme[10], numero[10], snb_themes[10], snb_archivistes[10];
     int action, res_init;
@@ -51,6 +54,9 @@ int main(int argc, char* argv[]){
     sprintf(snb_themes,"%d",nb_themes); /*On transforme nb_themes en char* pour le passer en paramètre*/
     sprintf(snb_archivistes,"%d",nb_archivistes); /*Idem mais pour les archivistes*/
 
+    /*On initialise le tableau de cles*/
+    cles = (key_t *) malloc(sizeof(key_t) * (nb_themes+3));
+
     /* Creation de la cle :                                  */
     /* 1 - On teste si le fichier cle existe dans le repertoire courant : */
     if ((stat(FICHIER_CLE,&st) == -1) &&
@@ -59,85 +65,71 @@ int main(int argc, char* argv[]){
 	    exit(-1);
     }
 
-    cle1 = ftok(FICHIER_CLE,'a');
-    if (cle1==-1){
-	    printf("Pb creation cle\n");
-	    exit(-1);
-    }
-    cle2 = ftok(FICHIER_CLE,'b');
-    if (cle2==-1){
-	    printf("Pb creation cle\n");
-	    exit(-1);
-    }
-    cle3 = ftok(FICHIER_CLE,'c');
-    if (cle3==-1){
-	    printf("Pb creation cle\n");
-	    exit(-1);
+    for(i=0;i<nb_themes+3;i++){
+        cles[i] = ftok(FICHIER_CLE,i);
+        if (cles[i] == -1){
+	        printf("Pb creation cle\n");
+	        exit(-1);
+        }
     }
 
     /* On cree les SMP et on teste si ils existe deja :        */
-    /*Contient les themes*/
-    smptheme = shmget(cle1,sizeof(char**) * nb_themes,IPC_CREAT | IPC_EXCL | 0660);
-    if (smptheme == -1){
-	    printf("Pb creation SMP ou il existe deja\n");
+    /*Contient les id des themes*/
+    smpthemes = shmget(cles[0],sizeof(id_t) * nb_themes,IPC_CREAT | IPC_EXCL | 0660);
+    if (smpthemes == -1){
+	    printf("Pb creation SMPTHEMES ou il existe deja\n");
 	    exit(-1);
     }
     /*Contient la taille des themes*/
-    smptaille = shmget(cle2,sizeof(int)*nb_themes,IPC_CREAT | IPC_EXCL | 0660);
+    smptaille = shmget(cles[1],sizeof(int)*nb_themes,IPC_CREAT | IPC_EXCL | 0660);
     if (smptaille == -1){
-	    printf("Pb creation SMP ou il existe deja\n");
+	    printf("Pb creation SMPTAILLE ou il existe deja\n");
         /*On detruit les ipc déjà présents*/
-        shmctl(smptheme,IPC_RMID,NULL);
-	    exit(-1);
+        terminaison(0);
     }
     /*contient le nombre de lecteurs et d'ecrivains*/
-    smpalgo = shmget(cle3,sizeof(int)*2*nb_themes,IPC_CREAT | IPC_EXCL | 0660);
+    smpalgo = shmget(cles[2] ,sizeof(int)*2*nb_themes,IPC_CREAT | IPC_EXCL | 0660);
     if (smpalgo == -1){
-	    printf("Pb creation SMP ou il existe deja\n");
+	    printf("Pb creation SMPALGO ou il existe deja\n");
         /*On detruit les ipc déjà présents*/
-        shmctl(smptheme,IPC_RMID,NULL);
-        shmctl(smptaille,IPC_RMID,NULL);
-	    exit(-1);
+        terminaison(0);
     }
 
     /* Attachement de la memoire partagee :                 */
-    theme = shmat(smptheme, NULL, 0);
-    if(theme == (void *)-1){
+    themes = shmat(smpthemes, NULL, 0);
+    if(themes == (void *)-1){
         printf("Pb attachement\n");
 	    /* Il faut detruire les SMP */
-	    shmctl(smptheme,IPC_RMID,NULL);
-        shmctl(smptaille,IPC_RMID,NULL);
-        shmctl(smpalgo,IPC_RMID,NULL);
-        exit(-1);
+	    terminaison(0);
     }
 
     taille = shmat(smptaille, NULL, 0);
     if(taille == (void *)-1){
         printf("Pb attachement\n");
 	    /* Il faut detruire les SMP */
-        shmdt(theme);
-	    shmctl(smptheme,IPC_RMID,NULL);
-        shmctl(smptaille,IPC_RMID,NULL);
-        shmctl(smpalgo,IPC_RMID,NULL);
-        exit(-1);
+	    terminaison(0);
     }
 
     algo = shmat(smpalgo, NULL, 0);
     if(algo == (void *)-1){
         printf("Pb attachement\n");
 	    /* Il faut detruire les SMP */
-        shmdt(theme);
-        shmdt(taille);
-	    shmctl(smptheme,IPC_RMID,NULL);
-        shmctl(smptaille,IPC_RMID,NULL);
-        shmctl(smpalgo,IPC_RMID,NULL);
-        exit(-1);
+	    terminaison(0);
     }
 
 
+    /*On initialise les thèmes*/
+    for(i=0;i<nb_themes;i++){
+        themes[i] = shmget(cles[i+3],sizeof(char *)*TAILLE_MAX_SMP,IPC_CREAT | IPC_EXCL | 0660);
+        if (themes[i] == -1){
+            printf("Pb creation SMP ou il existe deja\n");
+            terminaison(0);
+        }
+    }
+
     /*On initialise la taille*/
     for(i=0;i<nb_themes;i++){
-        taille[i] = 0
+        taille[i] = 0;
     }
 
     /*On initialise algo*/
@@ -146,17 +138,11 @@ int main(int argc, char* argv[]){
     }
 
     /* On cree le semaphore :                               */
-    semap = semget(cle1,5*nb_themes,IPC_CREAT | IPC_EXCL | 0660);
+    semap = semget(cles[0],5*nb_themes,IPC_CREAT | IPC_EXCL | 0660);
     if (semap==-1){
 	    printf("Pb creation semaphore ou il existe deja\n");
 	    /* Il faut detruire les SMP */
-        shmdt(theme);
-        shmdt(taille);
-        shmdt(algo);
-	    shmctl(smptheme,IPC_RMID,NULL);
-        shmctl(smptaille,IPC_RMID,NULL);  
-        shmctl(smpalgo,IPC_RMID,NULL);  
-	    exit(-1);
+	    terminaison(0);
     }
 
     for(i=0;i<5*nb_themes;i++){
@@ -164,30 +150,16 @@ int main(int argc, char* argv[]){
         if (res_init==-1){
             printf("Pb d'init du semaphore\n");
             /* Il faut detruire les SMP */
-            shmdt(theme);
-            shmdt(taille);
-            shmdt(algo);
-            shmctl(smptheme,IPC_RMID,NULL);
-            shmctl(smptaille,IPC_RMID,NULL);  
-            shmctl(smpalgo,IPC_RMID,NULL);   
-            exit(-1);
+            terminaison(0);
         }
     }
 
     /* Creation file de message :                           */
-    file_msg = msgget(cle1, IPC_CREAT | IPC_EXCL | 0660);
+    file_msg = msgget(cles[0], IPC_CREAT | IPC_EXCL | 0660);
     if (file_msg==-1){
 	    printf("Pb creation de la file de message ou elle existe deja\n");
         /*On detruit les ipc déjà créés*/
-        shmdt(theme);
-        shmdt(taille);
-        shmdt(algo);
-	    shmctl(smptheme,IPC_RMID,NULL);
-        shmctl(smptaille,IPC_RMID,NULL);  
-        shmctl(smpalgo,IPC_RMID,NULL);
-        semctl(semap,0,IPC_RMID,NULL);
-        msgctl(file_msg,IPC_RMID,NULL);
-	    exit(-1);
+	    terminaison(0);
     }
 
     /*On capture tout les signaux sauf SIGKILL et SIGCHLD   */
@@ -213,7 +185,6 @@ int main(int argc, char* argv[]){
     /* On lance indéfiniment des journalistes :             */
     srand(time(NULL));
     while(0<1){
-        sleep((rand() % 2) +1);
         action = rand() % 10;
         pid = fork();
         if (pid==-1)
@@ -221,7 +192,7 @@ int main(int argc, char* argv[]){
         if (pid==0){
             /*On cree les parametres des journalistes*/
             sprintf(rtheme,"%d",rand()%nb_themes);
-            sprintf(numero,"%d",rand()%2);
+            sprintf(numero,"%d",rand()%TAILLE_MAX_SMP);
             
             if(action < 7){/*7/10 font des demandes de consultation*/
                 execl("journaliste","journaliste",snb_archivistes,"C",rtheme, numero,NULL);
@@ -234,7 +205,7 @@ int main(int argc, char* argv[]){
             exit(-1);
 	    }
     }
-
+    /*Idem, on ne l'atteint jamais mais juste au cas ou*/
     terminaison(0);
     exit(0);
 }

@@ -19,7 +19,7 @@ int main(int argc, char* argv[]){
 	    exit(-1);
     }
 
-    cle = ftok(FICHIER_CLE,'a');
+    cle = ftok(FICHIER_CLE,0);
     if (cle==-1){
 	    fprintf(stderr,"Pb creation cle1\n");
 	    exit(-1);
@@ -28,7 +28,7 @@ int main(int argc, char* argv[]){
     /* Creation file de message :                           */
     file_msg = msgget(cle, 0);
     if (file_msg==-1){
-	    fprintf(stderr,"Pb de recuperation de la file de message dans l'archiviste (%d)\n", getpid());
+	    fprintf(stderr,"Pb de recuperation de la file de message dans le journaliste (%d)\n", getpid());
 	    exit(-1);
     }
 
@@ -36,7 +36,7 @@ int main(int argc, char* argv[]){
     requete.mtype = 1;
     requete.expediteur = getpid();
     requete.nature = action;
-    requete.theme = 1;
+    requete.theme = atoi(argv[3]);
     switch(action){
         case 'C': /*Consultation*/
             requete.numero = atoi(argv[4]);
