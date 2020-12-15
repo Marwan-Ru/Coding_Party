@@ -22,14 +22,14 @@ typedef struct
     char nature; /*C : Consultation, P : Publication, E : Effacement*/
     int theme; /*De 1 a nb_theme */
     int numero; /*Numero de l'article concerné (-1 si inutilisé)*/
-    char contenu[4]; /*Contenu de l'article lors de la creation (NULL dans les autre cas)*/
+    char contenu[5]; /*Contenu de l'article lors de la creation (NULL dans les autre cas)*/
 } 
 requete_t;
 
 typedef struct{
     long mtype;
     int erreur; /*-1 si il y a eu une erreur*/
-    char contenu[4]; /*Contenu renvoyé lors d'une consultation, NULL dans les autres cas*/
+    char contenu[5]; /*Contenu renvoyé lors d'une consultation, NULL dans les autres cas*/
 }
 reponse_t;
 

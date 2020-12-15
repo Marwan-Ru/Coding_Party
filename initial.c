@@ -24,8 +24,10 @@ void terminaison(int s){
     /*On detruit les ipc*/
     shmdt(taille);
     shmdt(theme);
+    shmdt(algo);
     shmctl(smptheme,IPC_RMID,NULL);
     shmctl(smptaille,IPC_RMID,NULL);
+    shmctl(smpalgo,IPC_RMID,NULL);
     semctl(semap,0,IPC_RMID,NULL);
     msgctl(file_msg,IPC_RMID,NULL);
 	exit(-1);
@@ -105,6 +107,7 @@ int main(int argc, char* argv[]){
 	    /* Il faut detruire les SMP */
 	    shmctl(smptheme,IPC_RMID,NULL);
         shmctl(smptaille,IPC_RMID,NULL);
+        shmctl(smpalgo,IPC_RMID,NULL);
         exit(-1);
     }
 
@@ -115,6 +118,7 @@ int main(int argc, char* argv[]){
         shmdt(theme);
 	    shmctl(smptheme,IPC_RMID,NULL);
         shmctl(smptaille,IPC_RMID,NULL);
+        shmctl(smpalgo,IPC_RMID,NULL);
         exit(-1);
     }
 
@@ -126,6 +130,7 @@ int main(int argc, char* argv[]){
         shmdt(taille);
 	    shmctl(smptheme,IPC_RMID,NULL);
         shmctl(smptaille,IPC_RMID,NULL);
+        shmctl(smpalgo,IPC_RMID,NULL);
         exit(-1);
     }
 
@@ -143,21 +148,26 @@ int main(int argc, char* argv[]){
 	    printf("Pb creation semaphore ou il existe deja\n");
 	    /* Il faut detruire les SMP */
         shmdt(theme);
+        shmdt(taille);
+        shmdt(algo);
 	    shmctl(smptheme,IPC_RMID,NULL);
-        shmctl(smptaille,IPC_RMID,NULL);    
+        shmctl(smptaille,IPC_RMID,NULL);  
+        shmctl(smpalgo,IPC_RMID,NULL);  
 	    exit(-1);
     }
 
-    ushort tab[] = {0,0,0,0,0};
+    ushort tab[] = {1,1,1,1,1};
 
     res_init = semctl(semap,0,SETALL,tab);
     if (res_init==-1){
         printf("Pb d'init du semaphore\n");
 	    /* Il faut detruire les SMP */
         shmdt(theme);
+        shmdt(taille);
+        shmdt(algo);
 	    shmctl(smptheme,IPC_RMID,NULL);
-        shmctl(smptaille,IPC_RMID,NULL);
-        semctl(semap,0,IPC_RMID,NULL);    
+        shmctl(smptaille,IPC_RMID,NULL);  
+        shmctl(smpalgo,IPC_RMID,NULL);   
 	    exit(-1);
     }
 
@@ -166,10 +176,12 @@ int main(int argc, char* argv[]){
     if (file_msg==-1){
 	    printf("Pb creation de la file de message ou elle existe deja\n");
         /*On detruit les ipc déjà créés*/
-        shmdt(taille);
         shmdt(theme);
-        shmctl(smptheme,IPC_RMID,NULL);
-        shmctl(smptaille,IPC_RMID,NULL);
+        shmdt(taille);
+        shmdt(algo);
+	    shmctl(smptheme,IPC_RMID,NULL);
+        shmctl(smptaille,IPC_RMID,NULL);  
+        shmctl(smpalgo,IPC_RMID,NULL);
         semctl(semap,0,IPC_RMID,NULL);
         msgctl(file_msg,IPC_RMID,NULL);
 	    exit(-1);
