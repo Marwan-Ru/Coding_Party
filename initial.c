@@ -4,7 +4,10 @@
  */
 #include "types.h"
 
-int idsmp, file_msg;
+int  nb_archivistes, smptheme, smptaille, file_msg;
+int *taille;
+char ** theme;
+pid_t l_archiviste[MAX_ARCHIVISTE];
 
 void usage(char* s){
     printf("usage : %s <nb_archiviste> <nb_themes>", s);
@@ -12,26 +15,25 @@ void usage(char* s){
 }
 
 void terminaison(int s){
-    shmctl(idsmp,IPC_RMID,NULL);
+    int i;
+    /*On envoie un signal a tout les archivistes pour qu'ils se terminent*/
+    for(i=0;i<nb_archivistes;i++){
+        kill(l_archiviste[i], SIGUSR1);
+    }
+    /*On detruit les ipc*/
+    shmdt(taille);
+    shmdt(theme);
+    shmctl(smptheme,IPC_RMID,NULL);
+    shmctl(smptaille,IPC_RMID,NULL);
     /*COMPLETER AVEC LENSMEBLE DE SEMAPHORE*/
     msgctl(file_msg,IPC_RMID,NULL);
 	exit(-1);
 }
 
-void mon_sigaction(int signal, void (*f)(int)){
-    struct sigaction action;
-
-    action.sa_handler = f;
-    sigemptyset(&action.sa_mask);
-    action.sa_flags = 0;
-    sigaction(signal, &action, NULL);
-}
-
 int main(int argc, char* argv[]){
-    int nb_archivistes, nb_themes, i;
+    int nb_themes, i;
     struct stat st;
-    key_t cle;
-    char ** theme;
+    key_t cle1, cle2;
     pid_t pid;
     char ordre[10], rtheme[10], numero[10], snb_themes[10], snb_archivistes[10];
     int action;
@@ -41,6 +43,7 @@ int main(int argc, char* argv[]){
         usage(argv[0]);
     }
     nb_archivistes = atoi(argv[1]);
+    if(nb_archivistes > MAX_ARCHIVISTE) nb_archivistes = MAX_ARCHIVISTE;
     nb_themes = atoi(argv[2]);
     sprintf(snb_themes,"%d",nb_themes); /*On transforme nb_themes en char* pour le passer en paramètre*/
     sprintf(snb_archivistes,"%d",nb_archivistes); /*Idem mais pour les archivistes*/
@@ -53,27 +56,51 @@ int main(int argc, char* argv[]){
 	    exit(-1);
     }
 
-    cle = ftok(FICHIER_CLE,LETTRE_CODE);
-    if (cle==-1){
+    cle1 = ftok(FICHIER_CLE,'a');
+    if (cle1==-1){
+	    printf("Pb creation cle\n");
+	    exit(-1);
+    }
+    cle2 = ftok(FICHIER_CLE,'b');
+    if (cle2==-1){
 	    printf("Pb creation cle\n");
 	    exit(-1);
     }
 
-    /* On cree le SMP et on teste s'il existe deja :        */
-    idsmp = shmget(cle,sizeof(char*) * TAILLE_MAX_SMP,IPC_CREAT | IPC_EXCL | 0660);
-    if (idsmp==-1){
+    /* On cree les SMP et on teste si ils existe deja :        */
+    smptheme = shmget(cle1,sizeof(char*) * TAILLE_MAX_SMP,IPC_CREAT | IPC_EXCL | 0660);
+    if (smptheme==-1){
 	    printf("Pb creation SMP ou il existe deja\n");
+	    exit(-1);
+    }
+    smptaille = shmget(cle2,sizeof(int),IPC_CREAT | IPC_EXCL | 0660);
+    if (smptaille==-1){
+	    printf("Pb creation SMP ou il existe deja\n");
+        /*On detruit les ipc déjà présents*/
+        shmctl(smptheme,IPC_RMID,NULL);
 	    exit(-1);
     }
 
     /* Attachement de la memoire partagee :                 */
-    theme = shmat(idsmp, NULL, 0);
+    theme = shmat(smptheme, NULL, 0);
     if(theme == (void *)-1){
         printf("Pb attachement\n");
-	    /* Il faut detruire le SMP */
-	    shmctl(idsmp,IPC_RMID,NULL);
+	    /* Il faut detruire les SMP */
+	    shmctl(smptheme,IPC_RMID,NULL);
+        shmctl(smptaille,IPC_RMID,NULL);
     }
 
+    taille = shmat(smptaille, NULL, 0);
+    if(taille == (void *)-1){
+        printf("Pb attachement\n");
+	    /* Il faut detruire les SMP */
+        shmdt(theme);
+	    shmctl(smptheme,IPC_RMID,NULL);
+        shmctl(smptaille,IPC_RMID,NULL);
+    }
+
+    /*On initialise la taille*/
+    taille = 0;
     /* On cree le semaphore :                               */
     /*------------------------------------------------------*
      *                                                      *
@@ -82,11 +109,14 @@ int main(int argc, char* argv[]){
      *------------------------------------------------------*/
 
     /* Creation file de message :                           */
-    file_msg = msgget(cle, IPC_CREAT | IPC_EXCL | 0660);
+    file_msg = msgget(cle1, IPC_CREAT | IPC_EXCL | 0660);
     if (file_msg==-1){
 	    printf("Pb creation de la file de message ou elle existe deja\n");
         /*On detruit les ipc déjà créés*/
-        shmctl(idsmp,IPC_RMID,NULL);
+        shmdt(taille);
+        shmdt(theme);
+        shmctl(smptheme,IPC_RMID,NULL);
+        shmctl(smptaille,IPC_RMID,NULL);
         /*COMPLETER AVEC LENSEMBLE DE SEMAPHORE*/
         msgctl(file_msg,IPC_RMID,NULL);
 	    exit(-1);
@@ -104,8 +134,9 @@ int main(int argc, char* argv[]){
         if (pid==-1)  
             break;
         if (pid==0){
+            l_archiviste[i] = pid;
             sprintf(ordre,"%d",i);
-            execl("archiviste",ordre,snb_themes,NULL);
+            execl("archiviste","archiviste",ordre,snb_themes,NULL);
             /* en principe jamais atteint */
             exit(-1);
 	    }
@@ -113,7 +144,7 @@ int main(int argc, char* argv[]){
 
     /* On lance indéfiniment des journalistes :             */
     while(0<1){
-        sleep(1);
+        sleep((rand() % 2) +1);
         action = rand() % 10;
         pid = fork();
         if (pid==-1)
